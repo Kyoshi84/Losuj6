@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src import combinations as cb
 from src import statistics_engine as se
 from src.api_client import ApiConfig, ApiError, LottoApiClient
 from src.data_loader import load_canonical_csv
@@ -295,10 +296,111 @@ def view_config(db: pd.DataFrame) -> None:
         st.caption("Brak wpisów — nie wykonano jeszcze żadnej synchronizacji.")
 
 
+@st.cache_data(show_spinner=False)
+def cached_combo_stats(draws: pd.DataFrame, k: int) -> pd.DataFrame:
+    return cb.combo_stats(draws, k)
+
+
+@st.cache_data(show_spinner=False)
+def cached_benchmark(n_draws: int, k: int, observed: int) -> dict:
+    return cb.null_benchmark(n_draws, k, sims=300, observed=observed)
+
+
+def view_combos(db: pd.DataFrame) -> None:
+    st.title("🔗 Pary i trójki")
+    if db.empty:
+        return empty_notice()
+    sub, label, _, _ = period_picker(db, "combo")
+    if sub.empty:
+        st.info("W wybranym okresie nie ma losowań. Zmień okres.")
+        return
+    kind = st.radio("Rodzaj kombinacji", ["Pary", "Trójki"], horizontal=True)
+    k = 2 if kind == "Pary" else 3
+    word = cb.KIND[k]
+    stats = cached_combo_stats(sub, k)
+    n = len(sub)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Losowań w okresie", n)
+    c2.metric(f"Możliwych {'par' if k == 2 else 'trójek'}", f"{cb.total_combinations(k):,}".replace(",", " "))
+    c3.metric("Padło choć raz", f"{len(stats):,}".replace(",", " "))
+    c4.metric("Oczekiwane wystąpienia", f"{n * cb.expected_per_draw(k):.2f}",
+              help="Średnio tyle razy padałaby każda kombinacja przy równomiernym losowaniu.")
+    if n < se.LOW_SAMPLE_DRAWS:
+        st.warning(f"Ograniczona próba: tylko {n} losowań. Przy tak małej próbie większość kombinacji padła 0 lub 1 raz, "
+                   "więc ranking składa się głównie z remisów.")
+
+    top_n = st.slider("Ile pozycji w TOP", 5, 30, 10)
+    top = cb.top_combos(stats, top_n)
+    st.subheader(f"TOP {top_n} najczęstszych {'par' if k == 2 else 'trójek'}")
+    show = top.table.drop(columns=["liczby"])
+    st.dataframe(show, hide_index=True, width="stretch")
+    if top.ties_at_boundary:
+        extra = " Pokazano pierwsze 50 z nich." if top.truncated else ""
+        st.caption(f"Remis na granicy TOP {top_n}: {top.ties_at_boundary} kombinacji ma ten sam wynik ({top.boundary_count}), "
+                   f"więc nie rozstrzygam go arbitralnie i pokazuję je wszystkie.{extra}")
+    if not top.table.empty:
+        fig = go.Figure(go.Bar(x=top.table["kombinacja"], y=top.table["wystąpienia"], name="Faktycznie"))
+        fig.add_hline(y=float(top.table["oczekiwane"].iloc[0]), line_dash="dash",
+                      annotation_text="oczekiwane (losowo)", annotation_position="top left")
+        fig.update_layout(height=380, xaxis_title=word, yaxis_title="wystąpienia", xaxis_tickangle=-45)
+        st.plotly_chart(fig, width="stretch")
+
+        leader = int(top.table["wystąpienia"].iloc[0])
+        b = cached_benchmark(n, k, leader)
+        st.subheader("Czy lider jest zaskakujący?")
+        verdict = ("mieści się w normie losowej" if b["p"] >= 0.05 else
+                   "jest wyższy niż zwykle w losowych danych, ale to nadal nie dowodzi, że losowanie jest zaburzone")
+        st.write(f"Lider ({top.table['kombinacja'].iloc[0]}) padł **{leader}** razy. W {b['symulacji']} symulacjach czysto losowych "
+                 f"danych o tej samej liczbie losowań najczęstsza kombinacja padała zwykle **{b['p05']:.0f}–{b['p95']:.0f}** razy "
+                 f"(średnio {b['średnia']:.1f}). Co najmniej tyle wystąpień ({leader}) miał lider w **{100 * b['p']:.1f}%** symulacji, "
+                 f"czyli wynik {verdict}.")
+        st.caption("Ranking zawsze ma lidera — przy tysiącach kombinacji któraś musi paść najczęściej. Dlatego porównujemy go z liderem losowych danych, "
+                   "a nie ze średnią. Przy sprawdzaniu wielu statystyk naraz pojedyncze p ≈ 0,02 zdarza się przypadkiem.")
+
+    st.subheader("Sprawdź konkretną kombinację")
+    chosen = st.multiselect(f"Wybierz {k} liczby (1–49)", list(range(1, 50)), max_selections=k, key=f"pick_{k}")
+    if len(chosen) == k:
+        combo = tuple(sorted(chosen))
+        row = cb.lookup(stats, combo)
+        name = cb.label(combo)
+        if row is None:
+            st.info(f"{word.capitalize()} {name} nie padła ani razu w tym okresie "
+                    f"(oczekiwane przy losowaniu: {n * cb.expected_per_draw(k):.2f}).")
+        else:
+            st.success(f"{word.capitalize()} {name}: **{int(row['wystąpienia'])}** razy "
+                       f"(oczekiwane {row['oczekiwane']}), pozycja {int(row['ranking'])}, "
+                       f"ostatnio {row['ostatnie wystąpienie']} ({int(row['losowań od ostatniego'])} losowań temu).")
+        yr = cb.yearly_counts(sub, combo)
+        if len(yr) > 1:
+            fig2 = go.Figure([go.Bar(x=yr["rok"], y=yr["wystąpienia"], name="Faktycznie"),
+                              go.Scatter(x=yr["rok"], y=yr["oczekiwane"], name="Oczekiwane", mode="lines+markers")])
+            fig2.update_layout(height=320, xaxis=dict(dtick=1, title="rok"), yaxis_title="wystąpienia", legend=dict(orientation="h", y=1.15))
+            st.plotly_chart(fig2, width="stretch")
+            st.caption("Ostatni rok może być niepełny (mniej losowań), dlatego obok pokazano oczekiwaną wartość dla tej liczby losowań.")
+        hist = cb.combo_history(sub, combo)
+        if not hist.empty:
+            hist = hist.assign(draw_date=hist["draw_date"].dt.date).sort_values("draw_date", ascending=False)
+            with st.expander(f"Losowania z tą kombinacją ({len(hist)})"):
+                st.dataframe(hist, hide_index=True, width="stretch")
+    elif chosen:
+        st.caption(f"Wybierz dokładnie {k} liczby.")
+
+    st.subheader("Eksport (dla widocznego okresu)")
+    safe = label.replace(" ", "").replace("–", "_").split("(")[0]
+    kn = "pary" if k == 2 else "trojki"
+    e1, e2 = st.columns(2)
+    e1.download_button(f"Wszystkie {kn}, które padły (CSV)", df_to_csv_bytes(stats.drop(columns=["liczby"])),
+                       f"{kn}_{safe}.csv", "text/csv")
+    e2.download_button(f"TOP {top_n} (CSV)", df_to_csv_bytes(show), f"{kn}_top{top_n}_{safe}.csv", "text/csv")
+    st.info(cb.DISCLAIMER)
+
+
 VIEWS = {
     "Dashboard": view_dashboard,
     "Statystyki liczb": view_stats,
     "Porównanie okresów": view_compare,
+    "Pary i trójki": view_combos,
     "Historia losowań": view_history,
     "Import i jakość danych": view_import,
     "Konfiguracja i aktualizacja": view_config,

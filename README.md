@@ -26,9 +26,20 @@ Przeglądarka otworzy się pod adresem http://localhost:8501. Zatrzymanie: `Ctrl
 
 ## Widoki
 
-Dashboard · Statystyki liczb · Porównanie okresów · Historia losowań · Import i jakość danych · Konfiguracja i aktualizacja.
+Dashboard · Statystyki liczb · Porównanie okresów · **Pary i trójki** · Historia losowań · Import i jakość danych · Konfiguracja i aktualizacja.
 Okres analizy: cała historia, ostatni miesiąc (od dziś), ostatni miesiąc danych w bazie lub własny zakres dat.
 Eksporty (CSV/XLSX) zawsze odpowiadają widocznemu okresowi.
+
+## Pary i trójki
+
+Widok **Pary i trójki** pokazuje, które pary (2 liczby) i trójki (3 liczby) padały razem najczęściej, dla wybranego okresu:
+- TOP N (5–30) z oczekiwaną liczbą wystąpień, datą ostatniego wystąpienia i liczbą losowań od ostatniego. Remis na granicy TOP nie jest rozstrzygany arbitralnie — pokazywane są wszystkie kombinacje z tym samym wynikiem (do 50 wierszy).
+- **Czy lider jest zaskakujący?** — porównanie z liderem w 300 symulacjach czysto losowych danych o tej samej liczbie losowań (ziarno stałe, wynik powtarzalny). Ranking zawsze ma lidera, więc to właściwy punkt odniesienia, a nie średnia.
+- Wyszukiwarka dowolnej pary/trójki: liczba wystąpień, pozycja, trend roczny (wystąpienia vs oczekiwane), lista losowań.
+- Eksport CSV dla widocznego okresu. Kombinacje, które nie padły ani razu, nie są wypisywane (dla trójek to kilka tysięcy wierszy) — widok podaje ich liczbę.
+
+Przy 6 z 49 każda konkretna para ma w jednym losowaniu prawdopodobieństwo 15/1176 ≈ 1,3%, a każda trójka 20/18 424 ≈ 0,11%. Historyczne częstości nie są prognozą.
+Kod: `src/combinations.py` (bez zależności od interfejsu).
 
 ## Baza danych i aktualizacja CSV
 
@@ -51,7 +62,7 @@ Testy używają **sztucznych** danych (nie są prawdziwymi wynikami Lotto).
 
 ## Struktura
 
-`app.py` (interfejs) · `src/normalizer.py` (odczyt i walidacja) · `src/data_loader.py` · `src/statistics_engine.py` (obliczenia, bez UI) ·
+`app.py` (interfejs) · `src/normalizer.py` (odczyt i walidacja) · `src/data_loader.py` · `src/statistics_engine.py` (obliczenia, bez UI) · `src/combinations.py` (pary i trójki) ·
 `src/data_sources.py` (`LotteryDataSource`: `CsvDataSource`, `ExcelDataSource`, `ApiDataSource`) · `src/sync.py` (bezpieczne scalanie) ·
 `src/api_client.py` · `src/exporter.py` · `tests/` · `data/` · `reports/`
 
@@ -76,4 +87,4 @@ timeouty, ponawianie przy błędach sieci i 5xx, obsługa HTTP 429, walidacja pr
 
 ## Możliwe usprawnienia
 
-Uzupełnienie historii 2015–dziś, automatyczny harmonogram po potwierdzeniu API, statystyki par i trójek, obsługa innych gier, logowanie użytkowników przy uruchomieniu na serwerze.
+Uzupełnienie historii 2015–dziś, automatyczny harmonogram po potwierdzeniu API, obsługa innych gier, logowanie użytkowników przy uruchomieniu na serwerze.
