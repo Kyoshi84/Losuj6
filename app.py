@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src import combinations as cb
+from src import generator as gen
 from src import statistics_engine as se
 from src.api_client import ApiConfig, ApiError, LottoApiClient
 from src.data_loader import load_canonical_csv
@@ -396,8 +397,40 @@ def view_combos(db: pd.DataFrame) -> None:
     st.info(cb.DISCLAIMER)
 
 
+def view_losuj(db: pd.DataFrame) -> None:
+    st.title("🎲 Losuj 6")
+    st.write("Losowanie 6 liczb z 49 z regułami: liczby częściej padające w historii mają większą wagę, "
+             "pomijane są kombinacje, które już padły, oraz kombinacje z 3 kolejnymi liczbami "
+             "(np. po wylosowaniu 1 i 2 liczba 3 jest wykluczona).")
+    if db.empty:
+        st.warning("Baza jest pusta — losowanie odbędzie się bez statystyk i bez wykluczania historii.")
+        stats_draws = db
+    else:
+        stats_draws, _, _, _ = period_picker(db, "losuj")
+    strength = st.slider("Wpływ statystyk", 0.0, 3.0, 1.0, 0.5,
+                         help="0 = wszystkie liczby równie prawdopodobne; 1 = waga proporcjonalna do liczby wystąpień; "
+                              "więcej = silniejsze faworyzowanie najczęstszych liczb.")
+    if st.button(gen.BUTTON_LABEL, type="primary"):
+        try:
+            st.session_state["losuj_wynik"] = gen.losuj6(db, stats_draws=stats_draws, strength=strength)
+        except gen.GeneratorError as e:
+            st.error(str(e))
+    res = st.session_state.get("losuj_wynik")
+    if res is not None:
+        st.markdown("## " + "  ".join(f"`{n:>2}`" for n in res.numbers))
+        st.dataframe(pd.DataFrame({"liczba": list(res.numbers),
+                                   "wystąpienia w okresie": [res.frequencies[n] for n in res.numbers],
+                                   "szansa bazowa %": [res.weights[n] for n in res.numbers]}),
+                     hide_index=True, width="stretch")
+        st.caption(f"Prób: {res.attempts} · odrzuconych, bo kombinacja padła w historii: {res.rejected_history}. "
+                   f"Kombinacja nie występuje w {len(db)} losowaniach z bazy i nie zawiera 3 kolejnych liczb.")
+    st.info("Reguły zmieniają, które kombinacje są proponowane, ale nie zwiększają szansy na wygraną — "
+            "każda kombinacja 6 z 49 ma takie samo prawdopodobieństwo.")
+
+
 VIEWS = {
     "Dashboard": view_dashboard,
+    "Losuj 6": view_losuj,
     "Statystyki liczb": view_stats,
     "Porównanie okresów": view_compare,
     "Pary i trójki": view_combos,

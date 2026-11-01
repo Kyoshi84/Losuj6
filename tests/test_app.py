@@ -6,7 +6,7 @@ from src.normalizer import write_canonical_csv
 pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
-VIEWS = ["Dashboard", "Statystyki liczb", "Porównanie okresów", "Pary i trójki", "Historia losowań",
+VIEWS = ["Losuj 6", "Dashboard", "Statystyki liczb", "Porównanie okresów", "Pary i trójki", "Historia losowań",
          "Import i jakość danych", "Konfiguracja i aktualizacja"]
 
 
@@ -37,3 +37,15 @@ def test_pary_i_trojki_wyszukiwarka(kind, picked, tmp_path, fake_draws, monkeypa
     assert any("razy" in s.value for s in at.success)
     at.multiselect[0].set_value([47, 48, 49][-len(picked):]).run()     # kombinacja, która nie padła
     assert not at.exception and any("nie padła ani razu" in i.value for i in at.info)
+
+
+def test_przycisk_losuj6(tmp_path, fake_draws, monkeypatch):
+    db = tmp_path / "db.csv"; write_canonical_csv(fake_draws, db)
+    monkeypatch.setenv("LOTTO_DATA_PATH", str(db))
+    at = AppTest.from_file(str(__import__("pathlib").Path(__file__).resolve().parents[1] / "app.py"), default_timeout=60).run()
+    at.sidebar.radio[0].set_value("Losuj 6").run()
+    btn = [b for b in at.button if b.label == "Losuj 6 v 0.1"]
+    assert btn
+    btn[0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any("Prób:" in c.value for c in at.caption)

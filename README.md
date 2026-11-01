@@ -26,9 +26,20 @@ Przeglądarka otworzy się pod adresem http://localhost:8501. Zatrzymanie: `Ctrl
 
 ## Widoki
 
-Dashboard · Statystyki liczb · Porównanie okresów · **Pary i trójki** · Historia losowań · Import i jakość danych · Konfiguracja i aktualizacja.
+Dashboard · **Losuj 6** · Statystyki liczb · Porównanie okresów · **Pary i trójki** · Historia losowań · Import i jakość danych · Konfiguracja i aktualizacja.
 Okres analizy: cała historia, ostatni miesiąc (od dziś), ostatni miesiąc danych w bazie lub własny zakres dat.
 Eksporty (CSV/XLSX) zawsze odpowiadają widocznemu okresowi.
+
+## Losuj 6 (v 0.1)
+
+Widok **Losuj 6** ma przycisk **„Losuj 6 v 0.1”**, który losuje 6 liczb z 49 (`src/generator.py`):
+- **Statystyki** — liczba ma wagę (wystąpienia + 1)^s, liczoną dla wybranego okresu. Suwak „Wpływ statystyk” ustawia s
+  (0 = losowanie równomierne, 1 = proporcjonalnie do wystąpień, więcej = mocniej faworyzuje najczęstsze liczby).
+- **Bez powtórek z historii** — kombinacja, która już padła (w całej bazie), jest odrzucana i losowanie się powtarza.
+  Gdy skrajne wagi ciągle trafiają w historię, wpływ statystyk co 100 odrzuceń spada o połowę.
+- **Bez 3 kolejnych liczb** — po wylosowaniu np. 1 i 2 liczba 3 jest wykluczona (tak samo 2 przy 1 i 3).
+
+Reguły zmieniają, które kombinacje są proponowane, ale nie zwiększają szansy na wygraną.
 
 ## Pary i trójki
 
