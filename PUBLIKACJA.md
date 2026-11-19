@@ -5,9 +5,9 @@ to darmowy **Streamlit Community Cloud**, który uruchamia aplikację prosto z r
 
 ## Zanim zaczniesz: zaktualizuj bazę
 
-Baza `data/lotto_normalized.csv` kończy się na losowaniu z **2025-12-30** (3549 losowań: numery 1–731 z lat 1957–1970 oraz 4477–7294 z lat 2008–2025; brakuje losowań 732–4476 z lat 1971–2007).
+Baza `data/lotto_normalized.csv` kończy się na losowaniu z **2026-11-17** (3687 losowań: numery 1–731 z lat 1957–1970 oraz 4477–7432 z lat 2008–2026; brakuje losowań 732–4476 z lat 1971–2007).
 Statystyki i generator „Losuj 6” działają poprawnie, ale opierają się na tych starych danych:
-- liczby „najczęstsze” to najczęstsze w latach 1957–1970 i 2008–2025,
+- liczby „najczęstsze” to najczęstsze w latach 1957–1970 i 2008–2026,
 - generator wyklucza tylko kombinacje z tego okresu.
 
 Uzupełnij bazę lokalnie (widok **Import i jakość danych**: wgraj plik CSV/XLSX z pełną historią),
