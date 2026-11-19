@@ -24,6 +24,10 @@ streamlit run app.py
 ```
 Przeglądarka otworzy się pod adresem http://localhost:8501. Zatrzymanie: `Ctrl+C` w terminalu.
 
+## Publikacja w internecie
+
+Instrukcja krok po kroku (Streamlit Community Cloud lub własny serwer): [PUBLIKACJA.md](PUBLIKACJA.md).
+
 ## Widoki
 
 Dashboard · **Losuj 6** · Statystyki liczb · Porównanie okresów · **Pary i trójki** · Historia losowań · Import i jakość danych · Konfiguracja i aktualizacja.
