@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arcade 49 · Losuj6</title>
+  <meta name="description" content="Automat do gry w liczby 6 z 49: bęben z kulkami, generator Losuj 6 v 0.1, 49 liczb jako postacie z kartami statystyk, ranking i otwarte API z historią losowań od 1957 r.">
+  <meta name="theme-color" content="#0b0420">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23ff2bd6'/%3E%3Ccircle cx='24' cy='22' r='8' fill='%23fff' opacity='.5'/%3E%3Ctext x='32' y='42' font-size='26' font-family='monospace' font-weight='bold' text-anchor='middle' fill='%230b0420'%3E49%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<div class="crt" aria-hidden="true"></div>
+
+<header class="top">
+  <a class="logo" href="#automat" aria-label="Arcade 49 — start">
+    <span class="logo-main">ARCADE<span class="dot">·</span>49</span>
+    <span class="logo-sub">LOSUJ6 · 6 Z 49 · OD 1957</span>
+  </a>
+  <nav class="nav" aria-label="Sekcje">
+    <a href="#automat">Automat</a>
+    <a href="#postacie">Postacie</a>
+    <a href="#ranking">High score</a>
+    <a href="#ogien-lod">Ogień &amp; lód</a>
+    <a href="#api">API</a>
+  </nav>
+  <button class="sound" id="soundBtn" type="button" aria-pressed="true" title="Dźwięk">♪ ON</button>
+</header>
+
+<main>
+  <!-- ============================================================ AUTOMAT -->
+  <section id="automat" class="machine-wrap">
+    <div class="cabinet">
+      <div class="marquee"><span>INSERT COIN</span><span class="blink">▶</span><span>PRESS LOSUJ</span></div>
+
+      <div class="machine">
+        <div class="drum-box">
+          <canvas id="drum" width="560" height="560" aria-label="Bęben losujący z 49 kulkami" role="img"></canvas>
+          <div class="chute" aria-hidden="true"></div>
+          <div class="drum-status" id="drumStatus" role="status" aria-live="polite">Gotowy do gry</div>
+        </div>
+
+        <div class="controls">
+          <div class="tray" id="tray" aria-label="Wylosowane liczby">
+            <div class="slot"></div><div class="slot"></div><div class="slot"></div>
+            <div class="slot"></div><div class="slot"></div><div class="slot"></div>
+          </div>
+
+          <div class="control-row">
+            <button class="big-btn" id="losujBtn" type="button">
+              <span class="big-btn-cap">LOSUJ 6</span>
+              <span class="big-btn-ver">v 0.1</span>
+            </button>
+            <div class="lever" id="lever" aria-hidden="true"><div class="lever-stick"><div class="lever-knob"></div></div><div class="lever-base"></div></div>
+          </div>
+
+          <label class="power">
+            <span class="power-head"><span>MOC STATYSTYK</span><output id="strengthOut">×1</output></span>
+            <input id="strength" type="range" min="0" max="3" step="0.5" value="1">
+            <span class="power-scale"><span>0 · czysty los</span><span>3 · tylko legendy</span></span>
+          </label>
+
+          <div class="readout" id="readout">
+            <p>Generator waży liczby według historii, pomija kombinacje, które już padły od 1957 r.,
+              i nie dopuszcza 3 kolejnych liczb.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cabinet-foot">
+        <div class="last-draw">
+          <span class="label">OSTATNIE LOSOWANIE</span>
+          <span id="lastDate" class="mono">—</span>
+          <span id="lastBalls" class="mini-balls"></span>
+        </div>
+        <div class="session">
+          <span class="label">TWOJE KUPONY</span>
+          <ol id="mySets" class="my-sets"><li class="muted">Jeszcze nic — pociągnij za dźwignię.</li></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ POSTACIE -->
+  <section id="postacie" class="section">
+    <h2 class="h2"><span class="h2-kicker">PLAYER SELECT</span>Wybierz postać</h2>
+    <p class="lead">Każda z 49 liczb to postać. <b>Poziom</b> = ile razy padła od 1957 r.,
+      <b>forma</b> = ile razy w ostatnich <span data-recent>100</span> losowaniach. Kliknij kartę, żeby zobaczyć pełne statystyki.</p>
+
+    <div class="toolbar">
+      <div class="chips" id="tierFilter" role="group" aria-label="Klasa">
+        <button class="chip on" data-tier="all" type="button">Wszystkie</button>
+        <button class="chip t-legenda" data-tier="legenda" type="button">Legenda</button>
+        <button class="chip t-epicka" data-tier="epicka" type="button">Epicka</button>
+        <button class="chip t-rzadka" data-tier="rzadka" type="button">Rzadka</button>
+        <button class="chip t-zwykła" data-tier="zwykła" type="button">Zwykła</button>
+        <button class="chip t-underdog" data-tier="underdog" type="button">Underdog</button>
+      </div>
+      <label class="sort">Sortuj
+        <select id="sortBy">
+          <option value="number">numer</option>
+          <option value="count">poziom (wystąpienia)</option>
+          <option value="form">forma</option>
+          <option value="since">nieobecność</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <!-- ============================================================ RANKING -->
+  <section id="ranking" class="section">
+    <h2 class="h2"><span class="h2-kicker">HIGH SCORES</span>Najczęściej i najrzadziej</h2>
+    <div class="boards">
+      <div class="board">
+        <h3 class="board-h hot">TOP 10 · NAJCZĘŚCIEJ</h3>
+        <ol class="score" id="topMost"></ol>
+      </div>
+      <div class="board">
+        <h3 class="board-h cold">TOP 10 · NAJRZADZIEJ</h3>
+        <ol class="score" id="topLeast"></ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ OGIEŃ & LÓD -->
+  <section id="ogien-lod" class="section">
+    <h2 class="h2"><span class="h2-kicker">STATUS EFFECTS</span>Ogień &amp; lód</h2>
+    <div class="fx">
+      <div class="fx-col fire">
+        <h3>🔥 W ogniu</h3>
+        <p class="muted">Najwięcej trafień w ostatnich <span data-recent>100</span> losowaniach</p>
+        <div class="fx-balls" id="hotBalls"></div>
+      </div>
+      <div class="fx-col ice">
+        <h3>❄️ Zamrożone</h3>
+        <p class="muted">Najdłużej nie padły</p>
+        <div class="fx-balls" id="iceBalls"></div>
+      </div>
+    </div>
+
+    <h3 class="h3">Mapa ciepła 49 liczb</h3>
+    <div class="heat" id="heat" role="img" aria-label="Mapa ciepła wystąpień 49 liczb"></div>
+    <div class="heat-legend"><span>rzadziej</span><i></i><span>częściej</span></div>
+
+    <p class="fair" id="fairness"></p>
+  </section>
+
+  <!-- ============================================================ API -->
+  <section id="api" class="section">
+    <h2 class="h2"><span class="h2-kicker">LOOT · OPEN DATA</span>Pobierz bazę i API</h2>
+    <p class="lead" id="dbInfo">Cała historia losowań jest do pobrania za darmo.</p>
+
+    <div class="loot">
+      <a class="loot-btn" href="data/draws.csv" download>⬇ CSV <small>wszystkie losowania</small></a>
+      <a class="loot-btn" href="data/draws.json">⬇ JSON <small>wszystkie losowania</small></a>
+      <a class="loot-btn" href="data/stats.json">⬇ JSON <small>statystyki 49 liczb</small></a>
+      <a class="loot-btn alt" id="docsLink" href="#" target="_blank" rel="noopener">⚙ Dokumentacja API <small>wypróbuj na żywo</small></a>
+    </div>
+
+    <div class="endpoints">
+      <div class="ep"><span class="m get">GET</span><code>/api/draws</code><span>historia; <code>?year=2024</code>, <code>?from=2020-01-01&amp;to=2020-12-31</code>, <code>?format=csv</code>, <code>?order=desc&amp;limit=10</code></span></div>
+      <div class="ep"><span class="m get">GET</span><code>/api/draws/latest</code><span>ostatnie losowanie</span></div>
+      <div class="ep"><span class="m get">GET</span><code>/api/draws/{nr}</code><span>losowanie o numerze</span></div>
+      <div class="ep"><span class="m get">GET</span><code>/api/stats</code><span>statystyki 49 liczb (<code>?from=…&amp;to=…</code> dla okresu)</span></div>
+      <div class="ep"><span class="m get">GET</span><code>/api/stats/{liczba}</code><span>karta jednej liczby</span></div>
+      <div class="ep"><span class="m post">POST</span><code>/api/losuj</code><span>generator „Losuj 6 v 0.1”; <code>{"strength": 1, "count": 3}</code></span></div>
+    </div>
+
+    <pre class="code"><code id="curlExample">curl "https://losuj6-api.onrender.com/api/losuj?strength=1&amp;count=3"</code></pre>
+  </section>
+</main>
+
+<footer class="foot">
+  <p><b>Gra odpowiedzialna · 18+.</b> Historyczne częstości nie są prognozą: przy uczciwym losowaniu każda
+    kombinacja 6 z 49 ma tę samą szansę (1 do 13 983 816). Generator zmienia to, <i>które</i> liczby wybierasz,
+    a nie szansę na wygraną.</p>
+  <p class="muted">Arcade 49 to niezależny projekt hobbystyczny, niezwiązany z Totalizatorem Sportowym.
+    Dane mogą zawierać luki — sprawdzaj wyniki u organizatora gry.</p>
+</footer>
+
+<!-- karta postaci -->
+<dialog class="modal" id="modal" aria-labelledby="modalTitle">
+  <div class="modal-in" id="modalBody"></div>
+  <form method="dialog"><button class="modal-x" aria-label="Zamknij">✕</button></form>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

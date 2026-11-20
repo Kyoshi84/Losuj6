@@ -1,0 +1,4 @@
+# Cloudflare Pages: strona statyczna z katalogu web/ (bez kroku budowania).
+name = "losuj6"
+pages_build_output_dir = "web"
+compatibility_date = "2026-11-01"

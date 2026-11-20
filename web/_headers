@@ -1,0 +1,11 @@
+/data/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=3600
+
+/data/draws.csv
+  Content-Type: text/csv; charset=utf-8
+  Content-Disposition: attachment; filename="losuj6_draws.csv"
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

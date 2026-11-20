@@ -1,0 +1,19 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Render → New → Blueprint → wybierz repozytorium → Apply.
+services:
+  - type: web
+    name: losuj6-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      # Adresy strony, które mogą wołać API z przeglądarki (przecinek = kilka). "*" = wszystkie.
+      - key: ALLOWED_ORIGINS
+        value: "*"

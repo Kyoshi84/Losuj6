@@ -1,0 +1,6 @@
+# Zależności samego API (Render). Pełna aplikacja Streamlit: requirements.txt
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30
+pandas>=2.2
+numpy>=1.26
+scipy>=1.11

@@ -1,20 +1,126 @@
-# Jak opublikować aplikację Losuj6
+# Jak opublikować Losuj6
 
-Aplikacja to program Streamlit (`app.py`). Najprostszy sposób, żeby była dostępna pod adresem w internecie,
-to darmowy **Streamlit Community Cloud**, który uruchamia aplikację prosto z repozytorium GitHub.
+Projekt ma dwie części do publikacji:
 
-## Zanim zaczniesz: zaktualizuj bazę
+| Część | Co to jest | Gdzie | Koszt |
+|---|---|---|---|
+| **Strona „Arcade 49”** (`web/`) | publiczna strona: bęben z kulkami, generator, karty 49 liczb, rankingi, pobieranie bazy | **Cloudflare Pages** | 0 zł |
+| **API** (`api/`) | FastAPI: historia losowań, statystyki i generator „Losuj 6 v 0.1” (`src/generator.py`) | **Render** (plan Free) | 0 zł |
+| Panel Streamlit (`app.py`) | Twoje narzędzie do importu i kontroli danych | lokalnie albo Streamlit Cloud (niżej) | 0 zł |
+
+Strona statyczna działa zawsze. Statystyki i pliki do pobrania (`web/data/`) są w niej zapisane,
+więc nie czekają na serwer. Na API czeka tylko przycisk **Losuj 6** i zapytania do `/api/…`.
+
+## 1. API na Render
+
+1. Zaloguj się na **https://dashboard.render.com** i połącz konto GitHub z repozytorium `Kyoshi84/Losuj6`.
+2. Kliknij **New → Blueprint**, wybierz repozytorium i gałąź `main`.
+   Render przeczyta plik `render.yaml` i pokaże usługę **losuj6-api** (plan Free, region Frankfurt).
+3. Kliknij **Apply** (lub **Deploy Blueprint**). Budowanie trwa kilka minut.
+4. Po wdrożeniu skopiuj adres usługi, np. `https://losuj6-api.onrender.com`. Jeśli nazwa była zajęta,
+   Render doda do niej końcówkę: użyj dokładnie tego adresu, który pokazuje panel.
+5. Sprawdź w przeglądarce:
+   - `https://TWOJ-ADRES.onrender.com/api/health`: powinno pokazać `"status":"ok"` i liczbę losowań,
+   - `https://TWOJ-ADRES.onrender.com/docs`: interaktywna dokumentacja API.
+
+Bez Blueprintu: **New → Web Service** → repozytorium, a potem:
+- **Build command:** `pip install -r requirements-api.txt`
+- **Start command:** `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
+- **Health check path:** `/api/health`
+- zmienna środowiskowa `PYTHON_VERSION` = `3.12.8`
+
+**Darmowy plan usypia API** po ok. 15 minutach bez ruchu. Pierwsze zapytanie po przerwie trwa 30–60 s.
+Strona sama „budzi” API zaraz po wejściu użytkownika i pokazuje komunikat, jeśli trzeba poczekać.
+
+## 2. Wpisz adres API do strony
+
+W pliku `web/config.js` ustaw adres z kroku 1:
+
+```js
+window.LOSUJ6_CONFIG = {
+  apiBase: "https://TWOJ-ADRES.onrender.com",
+};
+```
+
+Zatwierdź i wypchnij zmianę (`git commit`, `git push`).
+
+## 3. Strona na Cloudflare Pages
+
+1. Zaloguj się na **https://dash.cloudflare.com** → **Workers & Pages** → **Create** → zakładka **Pages**
+   → **Connect to Git** i wybierz repozytorium `Kyoshi84/Losuj6`.
+2. Ustawienia budowania:
+   - **Production branch:** `main`
+   - **Framework preset:** `None`
+   - **Build command:** zostaw puste
+   - **Build output directory:** `web`
+3. Kliknij **Save and Deploy**. Strona będzie pod adresem `https://losuj6.pages.dev`
+   (lub z końcówką, jeśli nazwa jest zajęta). Każdy `git push` na `main` aktualizuje stronę automatycznie.
+4. Własna domena (opcjonalnie): **Custom domains → Set up a custom domain**.
+
+Plik `web/_headers` ustawia nagłówki: pliki z `web/data/` można pobierać także z innych stron (CORS),
+a `draws.csv` pobiera się jako plik.
+
+## 4. Ogranicz API do swojej strony (opcjonalnie)
+
+Domyślnie API odpowiada każdej stronie (`ALLOWED_ORIGINS="*"`), bo to publiczne dane tylko do odczytu.
+Jeśli wolisz, żeby generator działał tylko na Twojej stronie, w Render → **losuj6-api → Environment** ustaw:
+
+```
+ALLOWED_ORIGINS = https://losuj6.pages.dev,https://twoja-domena.pl
+```
+
+Działa to tylko w przeglądarkach. Wywołania z `curl` czy skryptów nadal przechodzą.
+
+## 5. Aktualizacja wyników
+
+Po każdej zmianie bazy `data/lotto_normalized.csv` (import nowych losowań):
+
+```bash
+python scripts/build_static.py      # odświeża web/data/ (statystyki i pliki do pobrania)
+python -m pytest -q                 # test pilnuje, że web/data zgadza się z bazą
+git add data web/data && git commit -m "Nowe losowania" && git push
+```
+
+Render i Cloudflare same pobiorą zmiany z `main` i wdrożą nową wersję.
+
+## Podgląd lokalny
+
+```bash
+pip install -r requirements.txt
+uvicorn api.main:app --port 8000                  # API: http://127.0.0.1:8000/docs
+cd web && python -m http.server 8080              # strona w drugim terminalu
+```
+
+Otwórz `http://127.0.0.1:8080/?api=http://127.0.0.1:8000`. Parametr `?api=` podmienia adres z `config.js`.
+
+## Endpointy API
+
+| Metoda | Adres | Opis |
+|---|---|---|
+| GET | `/api/health` | stan serwera i liczba losowań |
+| GET | `/api/meta` | zakres bazy, luki w numeracji |
+| GET | `/api/draws` | historia; filtry `year`, `from`, `to`, `order`, `limit`, `offset`, `format=csv` |
+| GET | `/api/draws/latest` | ostatnie losowanie |
+| GET | `/api/draws/{nr}` | losowanie o numerze |
+| GET | `/api/stats` | statystyki 49 liczb (z `from`/`to` dla wybranego okresu) |
+| GET | `/api/stats/{liczba}` | statystyki jednej liczby |
+| GET/POST | `/api/losuj` | generator „Losuj 6 v 0.1”; `strength` 0–5, `count` 1–10 |
+
+---
+
+# Panel Streamlit (opcjonalnie)
+
+## Stan bazy
 
 Baza `data/lotto_normalized.csv` kończy się na losowaniu z **2026-11-17** (7311 losowań: numery 1–4355 z lat 1957–2006 oraz 4477–7432 z lat 2008–2026; brakuje tylko losowań 4356–4476 z roku 2007).
-Statystyki i generator „Losuj 6” działają poprawnie, ale opierają się na tych starych danych:
-- liczby „najczęstsze” to najczęstsze w latach 1957–2006 i 2008–2026,
-- generator wyklucza tylko kombinacje z tego okresu.
+Statystyki, strona i generator opierają się na tych danych: brakujący rok 2007 nie jest liczony
+do częstości, a jego kombinacje nie są wykluczane przez generator.
 
 Uzupełnij bazę lokalnie (widok **Import i jakość danych**: wgraj plik CSV/XLSX z pełną historią),
-a potem zatwierdź zmieniony plik `data/lotto_normalized.csv` i wypchnij go do GitHub (`git add`, `git commit`, `git push`).
+uruchom `python scripts/build_static.py`, a potem zatwierdź `data/lotto_normalized.csv` i `web/data/` i wypchnij go do GitHub (`git add`, `git commit`, `git push`).
 Na serwerze wgrywaj dane tylko do testów (patrz „Ważne ograniczenia”).
 
-## Wariant A: Streamlit Community Cloud (zalecany, za darmo)
+## Wariant A: Streamlit Community Cloud (za darmo)
 
 1. Wejdź na **https://share.streamlit.io** i zaloguj się kontem GitHub (tym samym, które ma dostęp do repozytorium `Kyoshi84/Losuj6`).
    Przy pierwszym logowaniu zgódź się, żeby Streamlit czytał Twoje repozytoria (dotyczy to też prywatnych).
@@ -79,6 +185,6 @@ i wskażesz na nim bazę zmienną `LOTTO_DATA_PATH`.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q        # powinno być: 80 passed
+python -m pytest -q        # powinno być: 88 passed
 streamlit run app.py       # sprawdź lokalnie widoki i przycisk „Losuj 6 v 0.1”
 ```
