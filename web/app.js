@@ -21,12 +21,21 @@ const store = {
 let STATS = null;
 
 // ------------------------------------------------------------------ pomocnicze
-const colorClass = n => "c" + (n < 10 ? 1 : n < 20 ? 2 : n < 30 ? 3 : n < 40 ? 4 : 5);
-const BALL_COLORS = ["#ffd23f", "#ff4fa8", "#3fd8ff", "#7dff5a", "#b57bff"];
-const ballColor = n => BALL_COLORS[n < 10 ? 0 : n < 20 ? 1 : n < 30 ? 2 : n < 40 ? 3 : 4];
+// Kolor kuli = kolor z mapy ciepła (jak często liczba padała). Przed wczytaniem statystyk: neutralny fiolet.
+const HEAT_STOPS = [[43, 75, 255], [125, 60, 255], [255, 43, 214], [255, 138, 31], [255, 225, 77]];
+let HEAT = null;                       // HEAT[n] = [r, g, b]
+function heatRGB(t) {
+  const x = Math.max(0, Math.min(1, t)) * (HEAT_STOPS.length - 1);
+  const i = Math.min(HEAT_STOPS.length - 2, Math.floor(x)), f = x - i;
+  return HEAT_STOPS[i].map((v, k) => Math.round(v + (HEAT_STOPS[i + 1][k] - v) * f));
+}
+const heatColor = t => `rgb(${heatRGB(t).join(",")})`;
+const ballRGB = n => (HEAT && HEAT[n]) || [150, 130, 220];
+const ballColor = n => `rgb(${ballRGB(n).join(",")})`;
 function ballEl(n, extra = "") {
   const d = document.createElement("div");
-  d.className = `ball ${colorClass(n)} ${extra}`.trim();
+  d.className = `ball ${extra}`.trim();
+  d.style.setProperty("--c", ballColor(n));
   d.innerHTML = `<span>${n}</span>`;
   d.setAttribute("aria-label", `kula ${n}`);
   return d;
@@ -155,8 +164,8 @@ const Drum = (() => {
   function drawBall(x, y, n, s = 1) {
     const rr = r * s;
     const g = ctx.createRadialGradient(x - rr * .35, y - rr * .4, rr * .1, x, y, rr);
-    const c = ballColor(n);
-    g.addColorStop(0, "#ffffff"); g.addColorStop(.25, c); g.addColorStop(1, shade(c, -.45));
+    const c = ballRGB(n);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(.25, `rgb(${c.join(",")})`); g.addColorStop(1, shade(c, -.45));
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "rgba(255,255,255,.88)"; ctx.beginPath(); ctx.arc(x, y, rr * .55, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#120832"; ctx.font = `700 ${Math.round(15 * s)}px "Chakra Petch", sans-serif`;
@@ -254,10 +263,9 @@ const Drum = (() => {
   };
 })();
 
-function shade(hex, p) {
-  const n = parseInt(hex.slice(1), 16);
+function shade(rgb, p) {
   const f = c => Math.max(0, Math.min(255, Math.round(c + c * p)));
-  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  return `rgb(${rgb.map(f).join(",")})`;
 }
 const easeInOut = t => t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
 
@@ -278,9 +286,9 @@ let busy = false;
 async function play() {
   if (busy) return;
   busy = true;
-  const btn = $("#losujBtn"), lever = $("#lever");
-  btn.disabled = true; btn.classList.add("pressed"); lever.classList.add("pull");
-  setTimeout(() => { btn.classList.remove("pressed"); lever.classList.remove("pull"); }, 380);
+  const btn = $("#losujBtn");
+  btn.disabled = true; btn.classList.add("pressed");
+  setTimeout(() => btn.classList.remove("pressed"), 380);
   Sound.coin();
   const strength = Number($("#strength").value);
 
@@ -288,11 +296,16 @@ async function play() {
   $$("#tray .slot").forEach(s => s.replaceChildren());
   Drum.refill(); Drum.shake(); Drum.spin(true);
   setStatus("Mieszanie…");
-  $("#readout").innerHTML = `<p class="big">MIESZANIE KUL…</p><p class="muted">Generator Losuj 6 v 0.1 liczy wagi z ${STATS ? fmt(STATS.meta.draws) : "całej"} historii losowań.</p>`;
+  $("#readout").innerHTML = `<div class="ro-head"><p class="big" id="roTitle">MIESZANIE KUL…</p>
+      <p class="muted" id="roSub">Generator Losuj 6 v 0.1 liczy wagi z ${STATS ? fmt(STATS.meta.draws) : "całej"} historii losowań.</p>
+      <div class="stat-line" id="roSum"></div></div>
+    <ol class="ro-list" id="roList"></ol>`;
 
   try {
     const [res] = await Promise.all([callGenerator(strength), sleep(REDUCED ? 300 : 1800)]);
     setStatus("Losowanie!");
+    $("#roTitle").textContent = "LOSOWANIE…";
+    $("#roSub").textContent = "Kolejne kule i ich statystyki:";
     const order = [...res.numbers].sort(() => Math.random() - .5);   // kule wypadają w losowej kolejności
     const slots = $$("#tray .slot");
     for (let i = 0; i < order.length; i++) {
@@ -300,6 +313,7 @@ async function play() {
       Sound.pop(i);
       const pos = [...res.numbers].indexOf(order[i]);
       slots[pos].replaceChildren(ballEl(order[i], "drop"));
+      addResultRow(order[i], res);
       await sleep(REDUCED ? 60 : 260);
     }
     Drum.spin(false);
@@ -322,18 +336,17 @@ function showResult(res, strength) {
   const even = res.numbers.filter(n => n % 2 === 0).length;
   const N = STATS ? Object.fromEntries(STATS.numbers.map(x => [x.number, x])) : {};
   const tiers = res.numbers.map(n => N[n] && N[n].tier);
-  $("#readout").innerHTML = `
-    <p class="big">${res.never_drawn_before ? "NOWA KOMBINACJA!" : "WYNIK"}</p>
-    <p>${res.never_drawn_before ? "Ta szóstka nie padła ani razu od 1957 r." : ""}</p>
-    <div class="stat-line">
+  $("#roTitle").textContent = res.never_drawn_before ? "NOWA KOMBINACJA!" : "WYNIK";
+  $("#roSub").textContent = res.never_drawn_before ? "Ta szóstka nie padła ani razu od 1957 r." : "";
+  $("#roSum").innerHTML = `
       <span>suma <b>${sum}</b></span>
       <span>parzyste <b>${even}/6</b></span>
       <span>moc <b>×${res.strength_used}</b></span>
       <span>prób <b>${res.attempts}</b></span>
-      <span>odrzucone z historii <b>${res.rejected_history}</b></span>
-    </div>
-    <div class="stat-line" style="margin-top:6px">${res.numbers.map(n =>
-      `<span>${n}: <b>${fmt(res.frequencies[n])}×</b> ${N[n] ? "· " + TIER_LABEL[N[n].tier].toLowerCase() : ""}</span>`).join("")}</div>`;
+      <span>odrzucone z historii <b>${res.rejected_history}</b></span>`;
+  // wiersze w kolejności rosnącej, jak na tacce
+  const list = $("#roList");
+  [...list.children].sort((a, b) => a.dataset.n - b.dataset.n).forEach(li => list.append(li));
 
   // osiągnięcia
   const ach = [];
@@ -357,6 +370,44 @@ function showResult(res, strength) {
   const sets = [{ n: res.numbers, s: strength, t: Date.now() }, ...store.get("sets", [])].slice(0, 8);
   store.set("sets", sets);
   renderSets(sets);
+}
+
+/** Wiersz statystyk wylosowanej liczby — pojawia się w chwili, gdy kula wpada do tacki. */
+function addResultRow(n, res) {
+  const x = STATS && STATS.numbers[n - 1];
+  const count = x ? x.count : res.frequencies[n];
+  const li = document.createElement("li");
+  li.className = "ro-row" + (x ? ` t-${x.tier}` : "");
+  li.dataset.n = n;
+  li.style.setProperty("--c", ballColor(n));
+  const N = STATS ? STATS.numbers : null;
+  const hi = N ? Math.max(...N.map(y => y.count)) : count, lo = N ? Math.min(...N.map(y => y.count)) : 0;
+  const w = hi > lo ? 8 + 92 * (count - lo) / (hi - lo) : 100;
+  li.append(ballEl(n));
+  li.insertAdjacentHTML("beforeend", `<div class="ro-main">
+      <div class="ro-top">
+        ${x ? `<span class="tier">${TIER_LABEL[x.tier]}</span>` : ""}
+        <span class="ro-count"><b data-to="${count}">0</b>× od 1957</span>
+        ${x ? `<span class="ro-rank">#${x.rank}/49</span>` : ""}
+      </div>
+      <div class="bar"><i style="width:0"></i></div>
+      ${x ? `<div class="ro-meta">
+        <span>${x.percent.toFixed(2)}% losowań</span>
+        <span>${x.deviation >= 0 ? "+" : ""}${x.deviation_pct}% vs średnia</span>
+        <span>${x.recent_form >= 2 ? "🔥" : x.recent_form <= -2 ? "❄️" : "•"} forma ${x.recent_count}/${STATS.recent_window}</span>
+        <span>ostatnio ${x.draws_since === 0 ? "w ostatnim los." : x.draws_since + " los. temu"}</span>
+      </div>` : ""}
+    </div>`);
+  li.addEventListener("click", () => x && openCard(n));
+  $("#roList").append(li);
+  requestAnimationFrame(() => { $(".bar > i", li).style.width = w.toFixed(1) + "%"; });
+  // licznik wystąpień nabija się od zera
+  const el = $("[data-to]", li), t0 = performance.now(), dur = REDUCED ? 1 : 700;
+  (function tick(t) {
+    const k = Math.min(1, (t - t0) / dur);
+    el.textContent = fmt(Math.round(count * (1 - (1 - k) ** 3)));
+    if (k < 1) requestAnimationFrame(tick);
+  })(t0);
 }
 
 function renderSets(sets = store.get("sets", [])) {
@@ -388,6 +439,9 @@ async function loadStats() {
 
 function renderAll() {
   const S = STATS, N = S.numbers;
+  const hi = Math.max(...N.map(x => x.count)), lo = Math.min(...N.map(x => x.count));
+  HEAT = [null, ...N.map(x => heatRGB((x.count - lo) / (hi - lo)))];
+  renderSets();
   $$("[data-recent]").forEach(e => { e.textContent = S.recent_window; });
 
   if (S.latest) {
@@ -443,13 +497,6 @@ function renderAll() {
   $("#dbInfo").innerHTML = `Baza: <b>${fmt(m.draws)}</b> losowań od ${fmtDate(m.first_date)} do ${fmtDate(m.last_date)}
     (numery ${m.first_id}–${m.last_id}${gaps ? `; brakuje: ${gaps}` : ""}). Pliki do pobrania działają zawsze;
     API na żywo służy do filtrowania i do generatora.`;
-}
-
-function heatColor(t) {
-  const stops = [[43, 75, 255], [125, 60, 255], [255, 43, 214], [255, 138, 31], [255, 225, 77]];
-  const x = t * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
-  const c = stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f));
-  return `rgb(${c.join(",")})`;
 }
 
 let tierFilter = "all";
@@ -523,7 +570,6 @@ function openCard(n) {
 function init() {
   Sound.init();
   $("#losujBtn").addEventListener("click", play);
-  $("#lever").addEventListener("click", play);
   const s = $("#strength"), out = $("#strengthOut");
   s.value = store.get("strength", 1);
   const paint = () => { out.textContent = "×" + s.value; };
