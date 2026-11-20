@@ -26,7 +26,7 @@ Przeglądarka otworzy się pod adresem http://localhost:8501. Zatrzymanie: `Ctrl
 
 ## Publikacja w internecie
 
-Publiczna strona **Arcade 49** (`web/`, Cloudflare Pages) z bębnem losującym, kartami 49 liczb i pobieraniem bazy
+Publiczna strona **Arcade 49** (`web/`, Cloudflare Workers) z bębnem losującym, kartami 49 liczb i pobieraniem bazy
 oraz **API** (`api/`, FastAPI na Render) z historią, statystykami i generatorem „Losuj 6 v 0.1”.
 Instrukcja krok po kroku: [PUBLIKACJA.md](PUBLIKACJA.md).
 

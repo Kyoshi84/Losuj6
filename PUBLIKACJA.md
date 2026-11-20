@@ -4,7 +4,7 @@ Projekt ma dwie części do publikacji:
 
 | Część | Co to jest | Gdzie | Koszt |
 |---|---|---|---|
-| **Strona „Arcade 49”** (`web/`) | publiczna strona: bęben z kulkami, generator, karty 49 liczb, rankingi, pobieranie bazy | **Cloudflare Pages** | 0 zł |
+| **Strona „Arcade 49”** (`web/`) | publiczna strona: bęben z kulkami, generator, karty 49 liczb, rankingi, pobieranie bazy | **Cloudflare Workers** (static assets) | 0 zł |
 | **API** (`api/`) | FastAPI: historia losowań, statystyki i generator „Losuj 6 v 0.1” (`src/generator.py`) | **Render** (plan Free) | 0 zł |
 | Panel Streamlit (`app.py`) | Twoje narzędzie do importu i kontroli danych | lokalnie albo Streamlit Cloud (niżej) | 0 zł |
 
@@ -44,18 +44,18 @@ window.LOSUJ6_CONFIG = {
 
 Zatwierdź i wypchnij zmianę (`git commit`, `git push`).
 
-## 3. Strona na Cloudflare Pages
+## 3. Strona na Cloudflare (Workers)
 
-1. Zaloguj się na **https://dash.cloudflare.com** → **Workers & Pages** → **Create** → zakładka **Pages**
-   → **Connect to Git** i wybierz repozytorium `Kyoshi84/Losuj6`.
-2. Ustawienia budowania:
-   - **Production branch:** `main`
-   - **Framework preset:** `None`
+1. Zaloguj się na **https://dash.cloudflare.com** → **Workers & Pages** → **Create** → **Import a repository**
+   i wybierz repozytorium `Kyoshi84/Losuj6`.
+2. Ustawienia:
+   - **Project name:** `losuj6`
    - **Build command:** zostaw puste
-   - **Build output directory:** `web`
-3. Kliknij **Save and Deploy**. Strona będzie pod adresem `https://losuj6.pages.dev`
-   (lub z końcówką, jeśli nazwa jest zajęta). Każdy `git push` na `main` aktualizuje stronę automatycznie.
-4. Własna domena (opcjonalnie): **Custom domains → Set up a custom domain**.
+   - **Deploy command:** `npx wrangler deploy`
+   - **Production branch:** `main`
+3. Kliknij **Deploy**. Plik `wrangler.toml` mówi Cloudflare, żeby opublikował katalog `web/` jako stronę statyczną.
+   Strona będzie pod adresem `https://losuj6.<twoja-subdomena>.workers.dev`. Każdy `git push` na `main` aktualizuje ją automatycznie.
+4. Własna domena (opcjonalnie): w projekcie **Settings → Domains & Routes → Add → Custom domain**.
 
 Plik `web/_headers` ustawia nagłówki: pliki z `web/data/` można pobierać także z innych stron (CORS),
 a `draws.csv` pobiera się jako plik.
@@ -66,7 +66,7 @@ Domyślnie API odpowiada każdej stronie (`ALLOWED_ORIGINS="*"`), bo to publiczn
 Jeśli wolisz, żeby generator działał tylko na Twojej stronie, w Render → **losuj6-api → Environment** ustaw:
 
 ```
-ALLOWED_ORIGINS = https://losuj6.pages.dev,https://twoja-domena.pl
+ALLOWED_ORIGINS = https://losuj6.twoja-subdomena.workers.dev,https://twoja-domena.pl
 ```
 
 Działa to tylko w przeglądarkach. Wywołania z `curl` czy skryptów nadal przechodzą.

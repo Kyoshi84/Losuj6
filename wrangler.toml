@@ -1,4 +1,7 @@
-# Cloudflare Pages: strona statyczna z katalogu web/ (bez kroku budowania).
+# Cloudflare Workers (static assets): strona statyczna z katalogu web/, bez kroku budowania.
+# Polecenie wdrożenia w Cloudflare: npx wrangler deploy
 name = "losuj6"
-pages_build_output_dir = "web"
 compatibility_date = "2026-11-01"
+
+[assets]
+directory = "./web"
