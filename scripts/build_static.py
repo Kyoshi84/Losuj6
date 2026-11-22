@@ -33,6 +33,7 @@ def build(out: Path = OUT) -> dict[str, Path]:
     files = {
         "draws.json": json.dumps(draws, ensure_ascii=False, separators=(",", ":")),
         "stats.json": json.dumps(svc.stats, ensure_ascii=False, separators=(",", ":")),
+        "filters.json": json.dumps(svc.filters_info, ensure_ascii=False, separators=(",", ":")),
     }
     paths = {}
     for name, text in files.items():

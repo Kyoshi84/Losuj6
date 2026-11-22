@@ -65,6 +65,22 @@
             <span class="power-scale"><span>0 · czysty los</span><span>3 · tylko legendy</span></span>
           </label>
 
+          <details class="expert" id="expert">
+            <summary>
+              <span class="expert-title">FILTRY · TRYB EKSPERT</span>
+              <span class="flt-count" id="fltCount">wyłączone</span>
+            </summary>
+            <p class="expert-note">Filtry zmniejszają pulę kombinacji, z której losuje generator. <b>Nie zwiększają szansy
+              na wygraną</b> — każda z 13 983 816 kombinacji ma tę samą szansę. Przy każdym filtrze widzisz, ile kombinacji
+              zostaje i jaki % prawdziwych losowań z historii by go przeszedł. Można włączyć kilka naraz; filtry
+              o przeciwnych celach blokują się nawzajem.</p>
+            <div class="flt-list" id="fltList"><p class="muted">Wczytywanie filtrów…</p></div>
+            <div class="flt-foot">
+              <div class="flt-summary" id="fltSummary" role="status" aria-live="polite"></div>
+              <button type="button" class="flt-clear" id="fltClear">Wyłącz wszystkie</button>
+            </div>
+          </details>
+
           <div class="readout" id="readout">
             <p>Generator waży liczby według historii, pomija kombinacje, które już padły od 1957 r.,
               i nie dopuszcza 3 kolejnych liczb.</p>
@@ -175,7 +191,9 @@
       <div class="ep"><span class="m get">GET</span><code>/api/draws/{nr}</code><span>losowanie o numerze</span></div>
       <div class="ep"><span class="m get">GET</span><code>/api/stats</code><span>statystyki 49 liczb (<code>?from=…&amp;to=…</code> dla okresu)</span></div>
       <div class="ep"><span class="m get">GET</span><code>/api/stats/{liczba}</code><span>karta jednej liczby</span></div>
-      <div class="ep"><span class="m post">POST</span><code>/api/losuj</code><span>generator „Losuj 6 v 0.1”; <code>{"strength": 1, "count": 3}</code></span></div>
+      <div class="ep"><span class="m post">POST</span><code>/api/losuj</code><span>generator „Losuj 6 v 0.1”; <code>{"strength": 1, "count": 3, "filters": ["suma", "popularne"]}</code></span></div>
+      <div class="ep"><span class="m get">GET</span><code>/api/filters</code><span>filtry trybu ekspert, ich wykluczenia i statystyki</span></div>
+      <div class="ep"><span class="m get">GET</span><code>/api/filters/estimate</code><span>ile kombinacji zostaje; <code>?filters=suma,parzyste&amp;similar_min=4</code></span></div>
     </div>
 
     <pre class="code"><code id="curlExample">curl "https://losuj6-api.onrender.com/api/losuj?strength=1&amp;count=3"</code></pre>

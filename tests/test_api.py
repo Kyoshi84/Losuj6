@@ -80,3 +80,23 @@ def test_static_site_data_up_to_date():
     assert stats == json.loads(json.dumps(service.stats, ensure_ascii=False))
     draws = json.loads((data / "draws.json").read_text(encoding="utf-8"))
     assert len(draws["rows"]) == len(service.draws)
+
+
+def test_filters_endpoints():
+    info = client.get("/api/filters").json()
+    assert [f["no"] for f in info["filters"]] == list(range(1, 13))
+    est = client.get("/api/filters/estimate", params={"filters": "suma,parzyste"}).json()
+    assert 50 < est["kept_pct"] < 90 and est["precise"]
+    assert client.get("/api/filters/estimate", params={"filters": "pary,podobne"}).status_code == 422
+    r = client.get("/api/losuj", params={"filters": "suma,parzyste,popularne"}).json()
+    n = r["results"][0]["numbers"]
+    assert 100 <= sum(n) <= 200 and 2 <= sum(x % 2 == 0 for x in n) <= 4 and max(n) > 31
+    assert r["filters"]["filters"] == ["suma", "parzyste", "popularne"]
+    body = {"filters": ["podobne"], "similar_min": 5}
+    assert client.post("/api/losuj", json=body).status_code == 200
+    assert client.post("/api/losuj", json={"filters": ["xyz"]}).status_code == 422
+
+
+def test_static_filters_json_up_to_date():
+    data = json.loads((ROOT / "web" / "data" / "filters.json").read_text(encoding="utf-8"))
+    assert data == json.loads(json.dumps(service.filters_info, ensure_ascii=False))

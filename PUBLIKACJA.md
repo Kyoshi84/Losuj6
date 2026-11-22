@@ -104,7 +104,12 @@ Otwórz `http://127.0.0.1:8080/?api=http://127.0.0.1:8000`. Parametr `?api=` pod
 | GET | `/api/draws/{nr}` | losowanie o numerze |
 | GET | `/api/stats` | statystyki 49 liczb (z `from`/`to` dla wybranego okresu) |
 | GET | `/api/stats/{liczba}` | statystyki jednej liczby |
-| GET/POST | `/api/losuj` | generator „Losuj 6 v 0.1”; `strength` 0–5, `count` 1–10 |
+| GET/POST | `/api/losuj` | generator „Losuj 6 v 0.1”; `strength` 0–5, `count` 1–10, `filters` (np. `suma,parzyste`), `similar_min` 4 lub 5 |
+| GET | `/api/filters` | 12 filtrów trybu ekspert: opis, wykluczenia, ile kombinacji zostaje |
+| GET | `/api/filters/estimate` | ile kombinacji zostaje po włączeniu kilku filtrów naraz |
+
+Filtry (tryb ekspert) opisuje `src/filters.py`. Pary i trójki (1, 2) nie łączą się z filtrem „Bez podobnych do historii” (10),
+bo mają przeciwne cele. Po zmianie bazy `python scripts/build_static.py` odświeża też `web/data/filters.json`.
 
 ---
 
@@ -185,6 +190,6 @@ i wskażesz na nim bazę zmienną `LOTTO_DATA_PATH`.
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q        # powinno być: 88 passed
+python -m pytest -q        # powinno być: 99 passed
 streamlit run app.py       # sprawdź lokalnie widoki i przycisk „Losuj 6 v 0.1”
 ```

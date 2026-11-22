@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from src import generator
+from src.filters import SIMILAR_DEFAULT, FilterError
 
 from .service import DB_PATH, NUM_COLS, LottoService, draw_to_dict
 
@@ -50,6 +51,14 @@ class LosujRequest(BaseModel):
     strength: float = Field(1.0, ge=0, le=MAX_STRENGTH,
                             description="Wpływ statystyk: 0 = równomiernie, 1 = waga ∝ wystąpienia+1, 2 = kwadrat…")
     count: int = Field(1, ge=1, le=MAX_COUNT, description="Ile zestawów wylosować")
+    filters: list[str] = Field(default_factory=list,
+                               description="Klucze filtrów trybu ekspert (lista: GET /api/filters), np. [\"suma\", \"parzyste\"]")
+    similar_min: int = Field(SIMILAR_DEFAULT, ge=4, le=5,
+                             description="Filtr „podobne”: od ilu wspólnych liczb z historią odrzucać (4 lub 5)")
+
+
+def _keys(filters: str | None) -> list[str]:
+    return [k.strip() for k in (filters or "").split(",") if k.strip()]
 
 
 # ---------------------------------------------------------------- endpointy
@@ -135,23 +144,46 @@ def number_stats(number: int):
     return JSONResponse(service.stats["numbers"][number - 1], headers=CACHE)
 
 
+@app.get("/api/filters", tags=["generator"])
+def filters_list():
+    """Filtry trybu ekspert: opis, wzajemne wykluczenia i ile kombinacji zostawia każdy z nich
+    (oraz jaki % prawdziwych losowań z historii by go przeszedł)."""
+    return JSONResponse(service.filters_info, headers=CACHE)
+
+
+@app.get("/api/filters/estimate", tags=["generator"])
+def filters_estimate(filters: str = Query("", description="Klucze filtrów po przecinku"),
+                     similar_min: int = Query(SIMILAR_DEFAULT, ge=4, le=5)):
+    """Ile kombinacji zostaje po włączeniu podanych filtrów naraz (szacunek z próbki)."""
+    try:
+        return JSONResponse(service.filter_estimate(_keys(filters), similar_min), headers=CACHE)
+    except FilterError as e:
+        raise HTTPException(422, str(e)) from e
+
+
 @app.post("/api/losuj", tags=["generator"])
 def losuj_post(req: LosujRequest):
     """Generator „Losuj 6 v 0.1”."""
-    return _losuj(req.strength, req.count)
+    return _losuj(req.strength, req.count, req.filters, req.similar_min)
 
 
 @app.get("/api/losuj", tags=["generator"])
 def losuj_get(strength: float = Query(1.0, ge=0, le=MAX_STRENGTH),
-              count: int = Query(1, ge=1, le=MAX_COUNT)):
+              count: int = Query(1, ge=1, le=MAX_COUNT),
+              filters: str = Query("", description="Klucze filtrów po przecinku, np. suma,parzyste,popularne"),
+              similar_min: int = Query(SIMILAR_DEFAULT, ge=4, le=5)):
     """To samo co POST — wygodne do wywołania z przeglądarki."""
-    return _losuj(strength, count)
+    return _losuj(strength, count, _keys(filters), similar_min)
 
 
-def _losuj(strength: float, count: int):
+def _losuj(strength: float, count: int, filters: list[str] | None = None, similar_min: int = SIMILAR_DEFAULT):
     try:
-        results = service.losuj(strength=strength, count=count)
+        results = service.losuj(strength=strength, count=count, filters=filters, similar_min=similar_min)
+        est = service.filter_estimate(filters, similar_min) if filters else None
+    except FilterError as e:
+        raise HTTPException(422, str(e)) from e
     except generator.GeneratorError as e:
-        raise HTTPException(503, str(e)) from e
-    return JSONResponse({"generator": generator.BUTTON_LABEL, "strength": strength, "results": results},
+        raise HTTPException(422 if filters else 503, str(e)) from e
+    return JSONResponse({"generator": generator.BUTTON_LABEL, "strength": strength,
+                         "filters": est, "results": results},
                         headers={"Cache-Control": "no-store"})

@@ -273,11 +273,19 @@ const easeInOut = t => t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
 async function callGenerator(strength) {
   const ctl = new AbortController();
   const kill = setTimeout(() => ctl.abort(), 90_000);
-  const slow = setTimeout(() => setStatus("Budzę serwer API… darmowy hosting śpi, to potrwa do minuty"), 3500);
+  const slow = setTimeout(() => setStatus(Filters.active.length
+    ? "Liczę filtry albo budzę serwer API… do minuty" : "Budzę serwer API… darmowy hosting śpi, to potrwa do minuty"), 3500);
   try {
-    const r = await fetch(`${API}/api/losuj?strength=${strength}&count=1`, { signal: ctl.signal, cache: "no-store" });
-    if (!r.ok) throw new Error(`API odpowiedziało ${r.status}`);
-    return (await r.json()).results[0];
+    const q = new URLSearchParams({ strength, count: 1 });
+    if (Filters.active.length) { q.set("filters", Filters.active.join(",")); q.set("similar_min", Filters.similarMin); }
+    const r = await fetch(`${API}/api/losuj?${q}`, { signal: ctl.signal, cache: "no-store" });
+    if (!r.ok) {
+      let detail = `API odpowiedziało ${r.status}`;
+      try { const j = await r.json(); if (typeof j.detail === "string") detail = j.detail; } catch { /* bez treści */ }
+      throw new Error(detail);
+    }
+    const j = await r.json();
+    return { ...j.results[0], filterInfo: j.filters };
   } finally { clearTimeout(kill); clearTimeout(slow); }
 }
 const setStatus = t => { $("#drumStatus").textContent = t; };
@@ -323,6 +331,11 @@ async function play() {
   } catch (e) {
     Drum.spin(false); Sound.err();
     const msg = e.name === "AbortError" ? "Serwer API nie odpowiedział w 90 s." : e.message;
+    if (/Filtr|filtr/.test(msg)) {
+      setStatus("Filtry: brak kombinacji");
+      $("#readout").innerHTML = `<p class="big" style="color:var(--orange)">ZA MOCNE FILTRY</p><p>${msg}</p>`;
+      return;
+    }
     setStatus("Błąd: automat API niedostępny");
     $("#readout").innerHTML = `<p class="big" style="color:var(--red)">GAME OVER?</p>
       <p>Nie udało się połączyć z generatorem (${msg}). Darmowy serwer mógł się jeszcze nie obudzić — spróbuj ponownie za chwilę.</p>`;
@@ -344,6 +357,13 @@ function showResult(res, strength) {
       <span>moc <b>×${res.strength_used}</b></span>
       <span>prób <b>${res.attempts}</b></span>
       <span>odrzucone z historii <b>${res.rejected_history}</b></span>`;
+  const fi = res.filterInfo;
+  if (fi && fi.filters.length) {
+    const rej = Object.entries(res.rejected_filters || {}).map(([k, v]) => `${Filters.name(k)}: ${fmt(v)}`).join(", ");
+    $("#roSum").insertAdjacentHTML("afterend", `<div class="ro-filters">
+      Filtry: ${fi.filters.map(k => `<span class="fchip">${Filters.no(k)}. ${Filters.name(k)}</span>`).join("")}<br>
+      Pula po filtrach: <b>${Filters.pctText(fi.kept_pct, fi.precise)}</b> kombinacji${rej ? ` · odrzucone przez filtry: ${rej}` : ""}</div>`);
+  }
   // wiersze w kolejności rosnącej, jak na tacce
   const list = $("#roList");
   [...list.children].sort((a, b) => a.dataset.n - b.dataset.n).forEach(li => list.append(li));
@@ -566,6 +586,135 @@ function openCard(n) {
   Sound.beep(660, .08, "triangle", .06);
 }
 
+// ------------------------------------------------------------------ filtry (tryb ekspert)
+const Filters = {
+  info: null, active: store.get("filters", []), similarMin: store.get("similarMin", 4), estTimer: 0,
+  byKey(k) { return this.info && this.info.filters.find(f => f.key === k); },
+  name(k) { const f = this.byKey(k); return f ? f.name : k; },
+  no(k) { const f = this.byKey(k); return f ? f.no : "?"; },
+  pctText(p, precise = true) {
+    if (p >= 99.95) return "100%";
+    if (p >= 1) return p.toLocaleString("pl-PL", { maximumFractionDigits: 1 }) + "%";
+    if (p >= .1) return p.toLocaleString("pl-PL", { maximumFractionDigits: 2 }) + "%";
+    if (p > 0) return (precise ? "" : "ok. ") + p.toLocaleString("pl-PL", { maximumFractionDigits: 3 }) + "%";
+    return "poniżej 0,002%";
+  },
+  combosText(p) {
+    const n = Math.round(13983816 * p / 100);
+    return n >= 1e6 ? (n / 1e6).toLocaleString("pl-PL", { maximumFractionDigits: 2 }) + " mln" : fmt(n);
+  },
+  async load() {
+    try {
+      const r = await fetch("data/filters.json");
+      if (!r.ok) throw new Error(r.status);
+      this.info = await r.json();
+    } catch {
+      try { this.info = await (await fetch(`${API}/api/filters`)).json(); }
+      catch { $("#fltList").innerHTML = `<p class="muted">Nie udało się wczytać filtrów.</p>`; return; }
+    }
+    this.active = this.active.filter(k => this.byKey(k));
+    this.render();
+  },
+  isBlocked(k) {
+    const f = this.byKey(k);
+    return this.active.filter(a => a !== k && (f.excludes.includes(a) || this.byKey(a).excludes.includes(k)));
+  },
+  stats(f) {
+    if (f.kind !== "reguła") return "";
+    const v = f.key === "podobne" ? f.variants[String(this.similarMin)] : f;
+    const hist = v.history_pct == null ? "" : ` · losowania z historii: <b>${this.pctText(v.history_pct)}</b>`;
+    return `zostaje <b>${this.pctText(v.kept_pct)}</b> kombinacji (${this.combosText(v.kept_pct)})${hist}`;
+  },
+  verdict(f) {
+    if (f.kind !== "reguła") return "";
+    const v = f.key === "podobne" ? f.variants[String(this.similarMin)] : f;
+    if (v.history_pct == null) return "<p>Wybór zależy od bieżącej formy liczb, więc nie da się go uczciwie sprawdzić na historii.</p>";
+    const d = Math.abs(v.kept_pct - v.history_pct);
+    if (d < 2) return `<p><b>Wniosek:</b> oba procenty są prawie równe — filtr odrzuca prawdziwe wyniki tak samo często jak dowolne kombinacje. Nie przewiduje, tylko zawęża pulę.</p>`;
+    if (f.key === "podobne") return `<p><b>Wniosek:</b> historia „gęstnieje” z każdym losowaniem: im więcej losowań w bazie, tym mniej nowych wyników przechodzi ten filtr. Dziś odrzuciłby prawie każde prawdziwe losowanie.</p>`;
+    return "";
+  },
+  extra(f) {
+    const c = this.info.context, x = f.facts;
+    if (f.key === "pary" && x) return `<p>Najczęstsza para: <b>${x.top_pair.join(" i ")}</b> (${x.top_count}×). Średnio para pada ${String(x.mean).replace(".", ",")} razy; rozrzut ${String(x.std).replace(".", ",")} wobec ${String(x.random_std).replace(".", ",")} przy czystym przypadku.</p>`;
+    if (f.key === "trojki" && x) return `<p>Najczęstsza trójka: <b>${x.top_triple.join("-")}</b> (${x.top_count}×). Średnio trójka pada ${String(x.mean).replace(".", ",")} razy.</p>`;
+    if (f.key === "powtorki") return `<p>Ostatnie losowanie: <b>${c.last_draw.join(", ")}</b>.</p>`;
+    if (f.key === "goraco_zimno") return `<p>Ogień: <b>${c.hot.join(", ")}</b><br>Lód: <b>${c.cold.join(", ")}</b></p>`;
+    return "";
+  },
+  render() {
+    const list = $("#fltList");
+    list.replaceChildren(...this.info.filters.map(f => {
+      const on = this.active.includes(f.key), blockedBy = this.isBlocked(f.key);
+      const el = document.createElement("div");
+      el.className = `flt${on ? " on" : ""}${blockedBy.length && !on ? " blocked" : ""}`;
+      el.dataset.key = f.key;
+      const infoId = `fi-${f.key}`;
+      el.innerHTML = `
+        <label class="switch"><input type="checkbox" ${on ? "checked" : ""} ${blockedBy.length && !on ? "disabled" : ""}
+          aria-label="${f.no}. ${f.name}"><span class="slider"></span></label>
+        <div>
+          <div class="flt-head"><span class="flt-no">${f.no}</span><b>${f.name}</b>
+            <span class="kind ${f.kind === "waga" ? "weight" : "rule"}">${f.kind}</span>
+            <button type="button" class="info-btn" aria-expanded="false" aria-controls="${infoId}" title="Więcej informacji">i</button></div>
+          <p class="flt-short">${f.short}</p>
+          ${f.key === "podobne" ? `<label class="flt-param">odrzucaj od
+            <select><option value="4" ${this.similarMin === 4 ? "selected" : ""}>4 wspólnych liczb</option>
+            <option value="5" ${this.similarMin === 5 ? "selected" : ""}>5 wspólnych liczb</option></select></label>` : ""}
+          ${f.kind === "reguła" ? `<div class="flt-meta">${this.stats(f)}</div>` : `<div class="flt-meta">waga — nie odrzuca kombinacji, zmienia tylko szanse poszczególnych liczb</div>`}
+          ${blockedBy.length && !on ? `<div class="flt-block">Wyklucza się z: ${blockedBy.map(k => this.name(k)).join(", ")} (włączony)</div>`
+            : f.excludes.length ? `<div class="flt-block" style="color:var(--muted)">Nie łączy się z: ${f.excludes.map(k => this.name(k)).join(", ")}</div>` : ""}
+          <div class="flt-info" id="${infoId}" hidden><p>${f.info}</p>${this.extra(f)}${this.verdict(f)}</div>
+        </div>`;
+      $("input", el).addEventListener("change", e => this.toggle(f.key, e.target.checked));
+      const sel = $("select", el);
+      if (sel) sel.addEventListener("change", e => { this.similarMin = Number(e.target.value); store.set("similarMin", this.similarMin); this.render(); });
+      const ib = $(".info-btn", el);
+      ib.addEventListener("click", () => {
+        const box = $(".flt-info", el), open = box.hidden;
+        box.hidden = !open; ib.setAttribute("aria-expanded", String(open));
+      });
+      return el;
+    }));
+    this.summary();
+  },
+  toggle(k, on) {
+    this.active = on ? [...this.active, k] : this.active.filter(a => a !== k);
+    store.set("filters", this.active);
+    Sound.beep(on ? 990 : 520, .05, "square", .04);
+    this.render();
+  },
+  summary() {
+    const n = this.active.length, cnt = $("#fltCount");
+    cnt.textContent = n ? `aktywne: ${n}` : "wyłączone";
+    cnt.classList.toggle("on", !!n);
+    const box = $("#fltSummary");
+    if (!n) { box.innerHTML = "Filtry wyłączone — generator działa na standardowych regułach."; return; }
+    const rules = this.active.map(k => this.byKey(k)).filter(f => f.kind === "reguła");
+    if (!rules.length) { box.innerHTML = `Włączone tylko wagi — pula kombinacji bez zmian (<b>100%</b>).`; return; }
+    // szybki szacunek offline (zakłada niezależność filtrów), potem dokładniejszy z API
+    let p = 100;
+    rules.forEach(f => { p *= (f.key === "podobne" ? f.variants[String(this.similarMin)].kept_pct : f.kept_pct) / 100; });
+    this.showEstimate(p, false, true);
+    clearTimeout(this.estTimer);
+    this.estTimer = setTimeout(async () => {
+      try {
+        const q = new URLSearchParams({ filters: this.active.join(","), similar_min: this.similarMin });
+        const r = await fetch(`${API}/api/filters/estimate?${q}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (j.filters.join() === [...this.active].sort((a, b) => this.no(a) - this.no(b)).join()) this.showEstimate(j.kept_pct, j.precise, false);
+      } catch { /* API śpi — zostaje szacunek przybliżony */ }
+    }, 350);
+  },
+  showEstimate(p, precise, rough) {
+    const warn = p < .1 ? ` <span class="warn">Bardzo mała pula — losowanie może potrwać kilka sekund.</span>` : "";
+    $("#fltSummary").innerHTML = `Zostaje ${rough ? "ok. " : ""}<b>${this.pctText(p, precise)}</b> kombinacji
+      (${rough ? "≈" : ""}${this.combosText(p)} z 13,98 mln)${rough ? " · szacunek przybliżony" : ""}.${warn}`;
+  },
+  clear() { this.active = []; store.set("filters", []); this.render(); },
+};
+
 // ------------------------------------------------------------------ start
 function init() {
   Sound.init();
@@ -583,9 +732,11 @@ function init() {
   $("#modal").addEventListener("click", e => { if (e.target.id === "modal") e.target.close(); });
 
   $("#docsLink").href = `${API}/docs`;
-  $("#curlExample").textContent = `curl "${API}/api/losuj?strength=1&count=3"\ncurl "${API}/api/draws?year=2025&format=csv" -o 2025.csv`;
+  $("#curlExample").textContent = `curl "${API}/api/losuj?strength=1&count=3"\ncurl "${API}/api/losuj?filters=suma,parzyste,popularne"\ncurl "${API}/api/draws?year=2025&format=csv" -o 2025.csv`;
   renderSets();
   loadStats();
+  Filters.load();
+  $("#fltClear").addEventListener("click", () => Filters.clear());
   // budzimy darmowy serwer API od razu po wejściu, zanim ktoś naciśnie przycisk
   fetch(`${API}/api/health`, { cache: "no-store" }).catch(() => { });
 }

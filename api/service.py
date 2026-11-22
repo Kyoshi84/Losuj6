@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src import generator, statistics_engine as se
+from src import filters as flt, generator, statistics_engine as se
 from src.data_loader import _typed, load_canonical_csv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +63,32 @@ class LottoService:
     @cached_property
     def stats(self) -> dict:
         return self.build_stats()
+
+    @cached_property
+    def filter_ctx(self) -> flt.FilterContext:
+        return flt.FilterContext(self.draws)
+
+    @cached_property
+    def filters_info(self) -> dict:
+        ctx = self.filter_ctx
+        return {
+            "total_combos": flt.TOTAL_COMBOS,
+            "sample_size": flt.SAMPLE_SIZE,
+            "similar_default": flt.SIMILAR_DEFAULT,
+            "context": {"hot": ctx.hot, "cold": ctx.cold, "last_draw": sorted(ctx.last_draw),
+                        "recent_window": flt.RECENT_WINDOW},
+            "note": "Filtry zmniejszają pulę kombinacji, ale nie zwiększają szansy na wygraną. "
+                    "Gdy % zostających kombinacji ≈ % losowań z historii, które przeszłyby filtr, "
+                    "filtr nie ma mocy przewidywania.",
+            "filters": flt.describe(ctx),
+        }
+
+    def active_filters(self, keys: list[str] | None, similar_min: int = flt.SIMILAR_DEFAULT) -> flt.ActiveFilters:
+        return flt.ActiveFilters(self.filter_ctx, list(keys or []), similar_min)
+
+    def filter_estimate(self, keys: list[str] | None, similar_min: int = flt.SIMILAR_DEFAULT) -> dict:
+        af = self.active_filters(keys, similar_min)
+        return {"filters": af.keys, "similar_min": af.similar_min, **af.estimate()}
 
     # ------------------------------------------------------------ meta
     def meta(self) -> dict:
@@ -162,11 +188,13 @@ class LottoService:
         }
 
     # ------------------------------------------------------------ generator
-    def losuj(self, strength: float = 1.0, count: int = 1, seed: int | None = None) -> list[dict]:
+    def losuj(self, strength: float = 1.0, count: int = 1, seed: int | None = None,
+              filters: list[str] | None = None, similar_min: int = flt.SIMILAR_DEFAULT) -> list[dict]:
         rng = np.random.default_rng(seed)
+        af = self.active_filters(filters, similar_min) if filters else None
         out = []
         for _ in range(count):
-            r = generator.losuj6(self.draws, strength=strength, rng=rng, history=self.history)
+            r = generator.losuj6(self.draws, strength=strength, rng=rng, history=self.history, filters=af)
             out.append({
                 "numbers": list(r.numbers),
                 "attempts": r.attempts,
@@ -176,6 +204,7 @@ class LottoService:
                 "weights_pct": {str(k): v for k, v in r.weights.items()},
                 "never_drawn_before": tuple(r.numbers) not in self.history,
                 "has_triple": generator.has_triple(r.numbers),
+                "rejected_filters": r.rejected_filters,
             })
         return out
 
