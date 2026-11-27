@@ -30,6 +30,10 @@ Publiczna strona **Arcade 49** (`web/`, Cloudflare Workers) z bębnem losującym
 oraz **API** (`api/`, FastAPI na Render) z historią, statystykami i generatorem „Losuj 6 v 0.1”.
 Instrukcja krok po kroku: [PUBLIKACJA.md](PUBLIKACJA.md).
 
+Na stronie chodzi **Orb** (`web/avatar.js`, `web/avatar.css`): awatar w stylu ElevenLabs Orb z kolorami losowanymi
+z palety strony. Reaguje na losowanie kul i odpowiada tylko na pytania o stronę. Głos przez agenta ElevenLabs
+włącza się wpisaniem `elevenAgentId` w `web/config.js` — instrukcja: [docs/orb-agent-elevenlabs.md](docs/orb-agent-elevenlabs.md).
+
 ## Widoki
 
 Dashboard · **Losuj 6** · Statystyki liczb · Porównanie okresów · **Pary i trójki** · Historia losowań · Import i jakość danych · Konfiguracja i aktualizacja.

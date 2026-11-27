@@ -48,6 +48,16 @@ const plural = (n, one, few, many) => {
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** Zdarzenia dla awatara (avatar.js): a49:mix, a49:ball, a49:done, a49:error. */
+const emit = (type, detail = {}) => document.dispatchEvent(new CustomEvent("a49:" + type, { detail }));
+function ballInfo(n) {
+  const x = STATS && STATS.numbers[n - 1];
+  return {
+    n, rgb: ballRGB(n), tier: x ? x.tier : null, count: x ? x.count : null, rank: x ? x.rank : null,
+    since: x ? x.draws_since : null,
+    hot: !!(STATS && STATS.hot_recent.includes(n)), ice: !!(STATS && STATS.longest_absent.includes(n)),
+  };
+}
 
 function toast(title, text) {
   const t = document.createElement("div");
@@ -304,6 +314,7 @@ async function play() {
   $$("#tray .slot").forEach(s => s.replaceChildren());
   Drum.refill(); Drum.shake(); Drum.spin(true);
   setStatus("Mieszanie…");
+  emit("mix", { strength });
   $("#readout").innerHTML = `<div class="ro-head"><p class="big" id="roTitle">MIESZANIE KUL…</p>
       <p class="muted" id="roSub">Generator Losuj 6 v 0.1 liczy wagi z ${STATS ? fmt(STATS.meta.draws) : "całej"} historii losowań.</p>
       <div class="stat-line" id="roSum"></div></div>
@@ -322,14 +333,18 @@ async function play() {
       const pos = [...res.numbers].indexOf(order[i]);
       slots[pos].replaceChildren(ballEl(order[i], "drop"));
       addResultRow(order[i], res);
+      emit("ball", { ...ballInfo(order[i]), index: i });
       await sleep(REDUCED ? 60 : 260);
     }
     Drum.spin(false);
     Sound.win();
     setStatus("Gotowe! " + res.numbers.join(" · "));
     showResult(res, strength);
+    emit("done", { numbers: res.numbers, sum: res.numbers.reduce((a, b) => a + b, 0), fresh: !!res.never_drawn_before,
+      balls: res.numbers.map(ballInfo) });
   } catch (e) {
     Drum.spin(false); Sound.err();
+    emit("error", { message: e.message });
     const msg = e.name === "AbortError" ? "Serwer API nie odpowiedział w 90 s." : e.message;
     if (/Filtr|filtr/.test(msg)) {
       setStatus("Filtry: brak kombinacji");
